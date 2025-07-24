@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -210,8 +209,6 @@ func handleWebSocket(c *websocket.Conn) {
 			return
 		}
 
-		// Add small delay to simulate real-world loading
-		time.Sleep(100 * time.Millisecond)
 	}
 
 	// Send empty array to indicate completion

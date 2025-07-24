@@ -11,47 +11,45 @@
 </head>
 <body class="bg-gray-100 min-h-screen p-4">
     <div class="w-full max-w-none mx-4 md:w-3/4 md:max-w-4xl md:mx-auto">
-        <div class="collapse collapse-arrow bg-blue-100">
-            <input type="checkbox" checked /> 
-            <div class="collapse-title text-xl font-medium">
-                📁 <span id="currentPath">/</span>
-            </div>
-            <div class="collapse-content"> 
-                <!-- Back button -->
-                <div id="backButton" class="mb-2 hidden">
-                    <button onclick="navigateBack()" class="btn btn-sm btn-outline">
-                        ← Back
-                    </button>
-                </div>
-                
-                <ul class="menu bg-base-100 rounded-box p-2" id="fileList">
-                    <!-- Content will be populated by WebSocket -->
-                </ul>
-                
-                <!-- Loading Spinner -->
-                <div id="loadingSpinner" class="flex justify-center items-center p-4 hidden">
-                    <span class="loading loading-spinner loading-md text-blue-600"></span>
-                    <span class="ml-2 text-sm text-gray-600">Loading files...</span>
-                </div>
-            </div>
+        <!-- Tabs Container -->
+        <div class="tabs tabs-boxed mb-4 flex-wrap">
+            <div id="tabsContainer" class="flex flex-wrap gap-1"></div>
+            <button id="addTabBtn" class="btn btn-sm btn-circle btn-outline ml-2">+</button>
         </div>
+
+        <!-- Tab Content Container -->
+        <div id="tabContentContainer"></div>
     </div>
 
-    <!-- GLightbox JS (no dependencies!) -->
+    <!-- GLightbox JS -->
     <script src="https://cdn.jsdelivr.net/gh/mcstudios/glightbox/dist/js/glightbox.min.js"></script>
 
     <script>
-        // Global lightbox instance
+        // Global state
+        let tabs = new Map();
+        let activeTabId = null;
+        let tabCounter = 0;
         let lightbox;
 
-        // Check if file is an image
+        // Tab state structure
+        class TabState {
+            constructor(id, path = '') {
+                this.id = id;
+                this.path = path;
+                this.ws = null;
+                this.hasFolders = false;
+                this.hasFiles = false;
+                this.dividerAdded = false;
+            }
+        }
+
+        // Utility functions (same as before)
         function isImageFile(filename) {
             const imageExtensions = ['.jpg', '.jpeg', '.png'];
             const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
             return imageExtensions.includes(ext);
         }
 
-        // Get appropriate icon for file type
         function getFileIcon(filename) {
             if (isImageFile(filename)) {
                 return `
@@ -68,7 +66,6 @@
             }
         }
 
-        // Reinitialize lightbox after adding new images
         function reinitializeLightbox() {
             if (lightbox) {
                 lightbox.destroy();
@@ -97,14 +94,14 @@
             const isImage = isImageFile(name);
             const colorClass = isImage ? 'text-green-600 hover:bg-green-50' : 'text-blue-600 hover:bg-blue-50';
             const icon = getFileIcon(name);
-            
+
             if (isImage) {
-		    const imageUrl = `/image/${path}`;
+                const imageUrl = `/image/${path}`;
                 return `
                     <li>
                         <a href="${imageUrl}" class="glightbox ${colorClass}" data-gallery="gallery" data-title="${name}">
                             ${icon}
-                            ${name} 🖼️
+                            ${name} 🖼️ 
                         </a>
                     </li>
                 `;
@@ -122,87 +119,191 @@
 
         const dividerTemplate = () => `<div class="divider my-1"></div>`;
 
-        // Global variables
-        let ws = null;
-        let currentPath = '';  // Start with empty string (root)
-        let hasFolders = false;
-        let hasFiles = false;
-        let dividerAdded = false;
+        // Tab management
+        function createTab(path = '') {
+            const tabId = `tab-${++tabCounter}`;
+            const tab = new TabState(tabId, path);
+            tabs.set(tabId, tab);
+            
+            renderTab(tab);
+            renderTabContent(tab);
+            switchToTab(tabId);
+            
+            return tab;
+        }
 
-        // DOM elements
-        const fileListElement = document.getElementById('fileList');
-        const spinnerElement = document.getElementById('loadingSpinner');
-        const currentPathElement = document.getElementById('currentPath');
-        const backButtonElement = document.getElementById('backButton');
+        function renderTab(tab) {
+            const displayPath = tab.path === '' ? '/' : '/' + tab.path;
+            const tabElement = document.createElement('div');
+            tabElement.className = 'tab tab-bordered flex items-center gap-2';
+            tabElement.id = `tab-header-${tab.id}`;
+            tabElement.innerHTML = `
+                <span onclick="switchToTab('${tab.id}')" class="cursor-pointer">📁 ${displayPath}</span>
+                <button onclick="closeTab('${tab.id}')" class="btn btn-xs btn-circle btn-ghost">×</button>
+            `;
+            
+            document.getElementById('tabsContainer').appendChild(tabElement);
+        }
 
-        // Show/hide spinner
+        function renderTabContent(tab) {
+            const contentElement = document.createElement('div');
+            contentElement.id = `tab-content-${tab.id}`;
+            contentElement.className = 'tab-content hidden';
+            contentElement.innerHTML = `
+                <div class="collapse collapse-arrow bg-blue-100">
+                    <input type="checkbox" checked />
+                    <div class="collapse-title text-xl font-medium">
+                        📁 <span id="currentPath-${tab.id}">${tab.path === '' ? '/' : '/' + tab.path}</span>
+                    </div>
+                    <div class="collapse-content">
+                        <div id="backButton-${tab.id}" class="mb-2 ${tab.path === '' ? 'hidden' : ''}">
+                            <button onclick="navigateBack()" class="btn btn-sm btn-outline">
+                                ← Back
+                            </button>
+                        </div>
+                        <ul class="menu bg-base-100 rounded-box p-2" id="fileList-${tab.id}">
+                        </ul>
+                        <div id="loadingSpinner-${tab.id}" class="flex justify-center items-center p-4 hidden">
+                            <span class="loading loading-spinner loading-md text-blue-600"></span>
+                            <span class="ml-2 text-sm text-gray-600">Loading files...</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('tabContentContainer').appendChild(contentElement);
+        }
+
+        function switchToTab(tabId) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('tab-active'));
+            
+            // Show selected tab content
+            document.getElementById(`tab-content-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-header-${tabId}`).classList.add('tab-active');
+            
+            activeTabId = tabId;
+            
+            // Connect WebSocket if not already connected
+            const tab = tabs.get(tabId);
+            if (!tab.ws) {
+                connectWebSocket(tab.path);
+            }
+        }
+
+        function closeTab(tabId) {
+            const tab = tabs.get(tabId);
+            if (tab.ws) {
+                tab.ws.close();
+            }
+            
+            // Remove DOM elements
+            document.getElementById(`tab-header-${tabId}`).remove();
+            document.getElementById(`tab-content-${tabId}`).remove();
+            
+            // Remove from state
+            tabs.delete(tabId);
+            
+            // Switch to another tab if this was active
+            if (activeTabId === tabId) {
+                const remainingTabs = Array.from(tabs.keys());
+                if (remainingTabs.length > 0) {
+                    switchToTab(remainingTabs[0]);
+                } else {
+                    // Create new tab if no tabs left
+                    createTab();
+                }
+            }
+        }
+
+        function addNewTab() {
+            const currentTab = tabs.get(activeTabId);
+            const newPath = currentTab ? currentTab.path : '';
+            createTab(newPath);
+        }
+
+        // WebSocket and navigation functions (updated to work with active tab)
+        function getActiveTab() {
+            return tabs.get(activeTabId);
+        }
+
         function showSpinner() {
-            spinnerElement.classList.remove('hidden');
+            const tab = getActiveTab();
+            if (tab) {
+                document.getElementById(`loadingSpinner-${tab.id}`).classList.remove('hidden');
+            }
         }
 
         function hideSpinner() {
-            spinnerElement.classList.add('hidden');
-            // Reinitialize lightbox when loading is complete
-            setTimeout(reinitializeLightbox, 100);
+            const tab = getActiveTab();
+            if (tab) {
+                document.getElementById(`loadingSpinner-${tab.id}`).classList.add('hidden');
+                setTimeout(reinitializeLightbox, 100);
+            }
         }
 
-        // Update back button visibility
         function updateBackButton() {
-            if (currentPath === '') {
-                backButtonElement.classList.add('hidden');
-            } else {
-                backButtonElement.classList.remove('hidden');
+            const tab = getActiveTab();
+            if (tab) {
+                const backBtn = document.getElementById(`backButton-${tab.id}`);
+                if (tab.path === '') {
+                    backBtn.classList.add('hidden');
+                } else {
+                    backBtn.classList.remove('hidden');
+                }
             }
         }
 
-        // Clear file list and reset state
         function clearFileList() {
-            fileListElement.innerHTML = '';
-            hasFolders = false;
-            hasFiles = false;
-            dividerAdded = false;
-        }
-
-        // Append HTML immediately to the file list
-        function appendToFileList(html) {
-            fileListElement.insertAdjacentHTML('beforeend', html);
-        }
-
-        // Add divider between folders and files if needed
-        function addDividerIfNeeded() {
-            if (hasFolders && hasFiles && !dividerAdded) {
-                appendToFileList(dividerTemplate());
-                dividerAdded = true;
+            const tab = getActiveTab();
+            if (tab) {
+                document.getElementById(`fileList-${tab.id}`).innerHTML = '';
+                tab.hasFolders = false;
+                tab.hasFiles = false;
+                tab.dividerAdded = false;
             }
         }
 
-        // Handle incoming WebSocket messages
+        function appendToFileList(html) {
+            const tab = getActiveTab();
+            if (tab) {
+                document.getElementById(`fileList-${tab.id}`).insertAdjacentHTML('beforeend', html);
+            }
+        }
+
+        function addDividerIfNeeded() {
+            const tab = getActiveTab();
+            if (tab && tab.hasFolders && tab.hasFiles && !tab.dividerAdded) {
+                appendToFileList(dividerTemplate());
+                tab.dividerAdded = true;
+            }
+        }
+
         function handleMessage(event) {
             try {
                 const data = JSON.parse(event.data);
-                console.log('Received:', data);
+                const tab = getActiveTab();
+                if (!tab) return;
 
-                // If empty array, hide spinner and stop
                 if (Array.isArray(data) && data.length === 0) {
                     hideSpinner();
                     return;
                 }
 
-                // Show spinner when we start receiving data
                 if (Array.isArray(data) && data.length > 0) {
                     showSpinner();
                 }
 
-                // Process each item in the array and append immediately
                 data.forEach(item => {
                     if (item.type === 'folder') {
-                        if (!hasFolders) {
-                            hasFolders = true;
+                        if (!tab.hasFolders) {
+                            tab.hasFolders = true;
                         }
                         appendToFileList(folderTemplate(item.name, item.path));
                     } else if (item.type === 'file') {
-                        if (!hasFiles) {
-                            hasFiles = true;
+                        if (!tab.hasFiles) {
+                            tab.hasFiles = true;
                             addDividerIfNeeded();
                         }
                         appendToFileList(fileTemplate(item.name, item.path));
@@ -214,68 +315,62 @@
             }
         }
 
-        // Connect to WebSocket
         function connectWebSocket(path) {
-            if (ws) {
-                ws.close();
+            const tab = getActiveTab();
+            if (!tab) return;
+
+            if (tab.ws) {
+                tab.ws.close();
             }
 
             clearFileList();
             showSpinner();
 
-            currentPath = path;
-            // Display path with leading slash for UI
+            tab.path = path;
             const displayPath = path === '' ? '/' : '/' + path;
-            currentPathElement.textContent = displayPath;
+            document.getElementById(`currentPath-${tab.id}`).textContent = displayPath;
+            document.getElementById(`tab-header-${tab.id}`).querySelector('span').textContent = `📁 ${displayPath}`;
             updateBackButton();
 
-            // Use current domain and port instead of hardcoded localhost
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/files?path=${encodeURIComponent(path)}`;
-            
-            ws = new WebSocket(wsUrl);
 
-            ws.onopen = function(event) {
-                console.log('WebSocket connected for path:', path);
-            };
-
-            ws.onmessage = handleMessage;
-
-            ws.onclose = function(event) {
+            tab.ws = new WebSocket(wsUrl);
+            tab.ws.onopen = () => console.log('WebSocket connected for path:', path);
+            tab.ws.onmessage = handleMessage;
+            tab.ws.onclose = () => {
                 console.log('WebSocket disconnected');
                 hideSpinner();
             };
-
-            ws.onerror = function(error) {
+            tab.ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 hideSpinner();
             };
         }
 
-        // Navigate to folder - use the path from server response directly
         function navigateToFolder(folderPath) {
             connectWebSocket(folderPath);
         }
 
-        // Navigate back to parent directory
         function navigateBack() {
-            if (currentPath === '') return; // Already at root
-            
-            // Get parent path by removing the last segment
-            const pathParts = currentPath.split('/');
-            pathParts.pop(); // Remove last part
+            const tab = getActiveTab();
+            if (!tab || tab.path === '') return;
+
+            const pathParts = tab.path.split('/');
+            pathParts.pop();
             const parentPath = pathParts.join('/');
-            
             connectWebSocket(parentPath);
         }
 
-        // Initialize on page load
+        // Initialize
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize lightbox
             reinitializeLightbox();
             
-            // Initialize WebSocket connection
-            connectWebSocket(currentPath); // Start with empty string (root)
+            // Add event listener for new tab button
+            document.getElementById('addTabBtn').addEventListener('click', addNewTab);
+            
+            // Create initial tab
+            createTab();
         });
     </script>
 </body>
