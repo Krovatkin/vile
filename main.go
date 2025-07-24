@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -50,6 +51,9 @@ func main() {
 		return c.SendFile("./index.html")
 	})
 
+	// Image streaming route
+	app.Get("/image/*", handleImageStream)
+
 	// WebSocket upgrade middleware
 	app.Use("/files", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
@@ -65,6 +69,60 @@ func main() {
 	// Start server
 	log.Println("Server starting on :8080")
 	log.Fatal(app.Listen(":8080"))
+}
+
+func handleImageStream(c *fiber.Ctx) error {
+	// Get the path after /image/
+	relativePath := c.Params("*")
+	log.Printf("Image request for path: %s", relativePath)
+
+	// Construct full path
+	fullPath := filepath.Join(rootPath, relativePath)
+
+	// Check if file exists
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		log.Printf("Image file does not exist: %s", fullPath)
+		return c.Status(404).SendString("Image not found")
+	}
+
+	// Check if it's a file (not directory)
+	if info.IsDir() {
+		return c.Status(400).SendString("Path is a directory, not a file")
+	}
+
+	// Check if it's an image file
+	ext := strings.ToLower(filepath.Ext(fullPath))
+	if !isImageFile(ext) {
+		return c.Status(400).SendString("File is not a supported image format")
+	}
+
+	// Set appropriate content type
+	contentType := getImageContentType(ext)
+	c.Set("Content-Type", contentType)
+
+	// Stream the file
+	return c.SendFile(fullPath)
+}
+
+func isImageFile(ext string) bool {
+	imageExts := map[string]bool{
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+	}
+	return imageExts[ext]
+}
+
+func getImageContentType(ext string) string {
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func handleWebSocket(c *websocket.Conn) {

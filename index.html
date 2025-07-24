@@ -6,6 +6,8 @@
     <title>File Browser</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- GLightbox CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
 </head>
 <body class="bg-gray-100 min-h-screen p-4">
     <div class="w-full max-w-none mx-4 md:w-3/4 md:max-w-4xl md:mx-auto">
@@ -35,7 +37,50 @@
         </div>
     </div>
 
+    <!-- GLightbox JS (no dependencies!) -->
+    <script src="https://cdn.jsdelivr.net/gh/mcstudios/glightbox/dist/js/glightbox.min.js"></script>
+
     <script>
+        // Global lightbox instance
+        let lightbox;
+
+        // Check if file is an image
+        function isImageFile(filename) {
+            const imageExtensions = ['.jpg', '.jpeg', '.png'];
+            const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
+            return imageExtensions.includes(ext);
+        }
+
+        // Get appropriate icon for file type
+        function getFileIcon(filename) {
+            if (isImageFile(filename)) {
+                return `
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"></path>
+                    </svg>
+                `;
+            } else {
+                return `
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
+                    </svg>
+                `;
+            }
+        }
+
+        // Reinitialize lightbox after adding new images
+        function reinitializeLightbox() {
+            if (lightbox) {
+                lightbox.destroy();
+            }
+            lightbox = GLightbox({
+                selector: '.glightbox',
+                touchNavigation: true,
+                loop: true,
+                autoplayVideos: false
+            });
+        }
+
         // Templates
         const folderTemplate = (name, path) => `
             <li>
@@ -48,16 +93,32 @@
             </li>
         `;
 
-        const fileTemplate = (name, path) => `
-            <li>
-                <a href="#" class="text-blue-600 hover:bg-blue-50">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
-                    </svg>
-                    ${name}
-                </a>
-            </li>
-        `;
+        const fileTemplate = (name, path) => {
+            const isImage = isImageFile(name);
+            const colorClass = isImage ? 'text-green-600 hover:bg-green-50' : 'text-blue-600 hover:bg-blue-50';
+            const icon = getFileIcon(name);
+            
+            if (isImage) {
+		    const imageUrl = `/image/${path}`;
+                return `
+                    <li>
+                        <a href="${imageUrl}" class="glightbox ${colorClass}" data-gallery="gallery" data-title="${name}">
+                            ${icon}
+                            ${name} 🖼️
+                        </a>
+                    </li>
+                `;
+            } else {
+                return `
+                    <li>
+                        <a href="#" class="${colorClass}">
+                            ${icon}
+                            ${name}
+                        </a>
+                    </li>
+                `;
+            }
+        };
 
         const dividerTemplate = () => `<div class="divider my-1"></div>`;
 
@@ -81,6 +142,8 @@
 
         function hideSpinner() {
             spinnerElement.classList.add('hidden');
+            // Reinitialize lightbox when loading is complete
+            setTimeout(reinitializeLightbox, 100);
         }
 
         // Update back button visibility
@@ -208,6 +271,10 @@
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize lightbox
+            reinitializeLightbox();
+            
+            // Initialize WebSocket connection
             connectWebSocket(currentPath); // Start with empty string (root)
         });
     </script>
