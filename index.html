@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Browser</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.4.19/dist/full.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+    <div class="w-full max-w-none mx-4 md:w-3/4 md:max-w-4xl md:mx-auto">
+        <div class="collapse collapse-arrow bg-blue-100">
+            <input type="checkbox" checked /> 
+            <div class="collapse-title text-xl font-medium">
+                📁 <span id="currentPath">/</span>
+            </div>
+            <div class="collapse-content"> 
+                <!-- Back button -->
+                <div id="backButton" class="mb-2 hidden">
+                    <button onclick="navigateBack()" class="btn btn-sm btn-outline">
+                        ← Back
+                    </button>
+                </div>
+                
+                <ul class="menu bg-base-100 rounded-box p-2" id="fileList">
+                    <!-- Content will be populated by WebSocket -->
+                </ul>
+                
+                <!-- Loading Spinner -->
+                <div id="loadingSpinner" class="flex justify-center items-center p-4 hidden">
+                    <span class="loading loading-spinner loading-md text-blue-600"></span>
+                    <span class="ml-2 text-sm text-gray-600">Loading files...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Templates
+        const folderTemplate = (name, path) => `
+            <li>
+                <a href="#" onclick="navigateToFolder('${path.replace(/'/g, "\\'")}'); return false;" class="text-yellow-600 hover:bg-yellow-50">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
+                    </svg>
+                    ${name}
+                </a>
+            </li>
+        `;
+
+        const fileTemplate = (name, path) => `
+            <li>
+                <a href="#" class="text-blue-600 hover:bg-blue-50">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
+                    </svg>
+                    ${name}
+                </a>
+            </li>
+        `;
+
+        const dividerTemplate = () => `<div class="divider my-1"></div>`;
+
+        // Global variables
+        let ws = null;
+        let currentPath = '';  // Start with empty string (root)
+        let hasFolders = false;
+        let hasFiles = false;
+        let dividerAdded = false;
+
+        // DOM elements
+        const fileListElement = document.getElementById('fileList');
+        const spinnerElement = document.getElementById('loadingSpinner');
+        const currentPathElement = document.getElementById('currentPath');
+        const backButtonElement = document.getElementById('backButton');
+
+        // Show/hide spinner
+        function showSpinner() {
+            spinnerElement.classList.remove('hidden');
+        }
+
+        function hideSpinner() {
+            spinnerElement.classList.add('hidden');
+        }
+
+        // Update back button visibility
+        function updateBackButton() {
+            if (currentPath === '') {
+                backButtonElement.classList.add('hidden');
+            } else {
+                backButtonElement.classList.remove('hidden');
+            }
+        }
+
+        // Clear file list and reset state
+        function clearFileList() {
+            fileListElement.innerHTML = '';
+            hasFolders = false;
+            hasFiles = false;
+            dividerAdded = false;
+        }
+
+        // Append HTML immediately to the file list
+        function appendToFileList(html) {
+            fileListElement.insertAdjacentHTML('beforeend', html);
+        }
+
+        // Add divider between folders and files if needed
+        function addDividerIfNeeded() {
+            if (hasFolders && hasFiles && !dividerAdded) {
+                appendToFileList(dividerTemplate());
+                dividerAdded = true;
+            }
+        }
+
+        // Handle incoming WebSocket messages
+        function handleMessage(event) {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+
+                // If empty array, hide spinner and stop
+                if (Array.isArray(data) && data.length === 0) {
+                    hideSpinner();
+                    return;
+                }
+
+                // Show spinner when we start receiving data
+                if (Array.isArray(data) && data.length > 0) {
+                    showSpinner();
+                }
+
+                // Process each item in the array and append immediately
+                data.forEach(item => {
+                    if (item.type === 'folder') {
+                        if (!hasFolders) {
+                            hasFolders = true;
+                        }
+                        appendToFileList(folderTemplate(item.name, item.path));
+                    } else if (item.type === 'file') {
+                        if (!hasFiles) {
+                            hasFiles = true;
+                            addDividerIfNeeded();
+                        }
+                        appendToFileList(fileTemplate(item.name, item.path));
+                    }
+                });
+
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
+            }
+        }
+
+        // Connect to WebSocket
+        function connectWebSocket(path) {
+            if (ws) {
+                ws.close();
+            }
+
+            clearFileList();
+            showSpinner();
+
+            currentPath = path;
+            // Display path with leading slash for UI
+            const displayPath = path === '' ? '/' : '/' + path;
+            currentPathElement.textContent = displayPath;
+            updateBackButton();
+
+            // Use current domain and port instead of hardcoded localhost
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/files?path=${encodeURIComponent(path)}`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function(event) {
+                console.log('WebSocket connected for path:', path);
+            };
+
+            ws.onmessage = handleMessage;
+
+            ws.onclose = function(event) {
+                console.log('WebSocket disconnected');
+                hideSpinner();
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                hideSpinner();
+            };
+        }
+
+        // Navigate to folder - use the path from server response directly
+        function navigateToFolder(folderPath) {
+            connectWebSocket(folderPath);
+        }
+
+        // Navigate back to parent directory
+        function navigateBack() {
+            if (currentPath === '') return; // Already at root
+            
+            // Get parent path by removing the last segment
+            const pathParts = currentPath.split('/');
+            pathParts.pop(); // Remove last part
+            const parentPath = pathParts.join('/');
+            
+            connectWebSocket(parentPath);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            connectWebSocket(currentPath); // Start with empty string (root)
+        });
+    </script>
+</body>
+</html>
+
+
