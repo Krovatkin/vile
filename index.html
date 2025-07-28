@@ -72,6 +72,37 @@
     <script src="https://cdn.jsdelivr.net/gh/mcstudios/glightbox/dist/js/glightbox.min.js"></script>
 
     <script>
+        // URL parameter handling functions
+        function getPathFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const pathParam = urlParams.get('path');
+            return pathParam ? decodeURIComponent(pathParam) : '';
+        }
+
+        function updateURLPath(path) {
+            const url = new URL(window.location);
+            if (path === '') {
+                url.searchParams.delete('path');
+            } else {
+                url.searchParams.set('path', encodeURIComponent(path));
+            }
+            
+            // Update URL without reloading the page
+            window.history.pushState({ path: path }, '', url);
+        }
+
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', function(event) {
+            if (event.state && event.state.path !== undefined) {
+                // Navigate to the path from history state
+                navigateToFolder(event.state.path);
+            } else {
+                // Fallback to reading from URL
+                const pathFromURL = getPathFromURL();
+                navigateToFolder(pathFromURL);
+            }
+        });
+
         // Tab state management
         let tabCounter = 0;
         let activeTabId = null;
@@ -771,6 +802,9 @@
             currentPathElement.textContent = displayPath;
             updateBackButton();
 
+            // Update URL parameter when navigating
+            updateURLPath(path);
+
             // Use current domain and port instead of hardcoded localhost
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/files?path=${encodeURIComponent(path)}`;
@@ -825,11 +859,11 @@
             // Initialize button states
             updateButtonStates();
 
-            // Create first tab (will use default global state)
+            currentPath = getPathFromURL();
+
+            // Create first tab (will use path from URL or default to root)
             createTab();
         });
     </script>
 </body>
 </html>
-
-
