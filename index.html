@@ -625,21 +625,26 @@
                     </li>
                 `;
             } else if (isDocument) {
+                fileType = 'document';
+                colorClass = isSelected ? '!bg-blue-200 !text-white' : 'text-purple-600 hover:bg-purple-50';
+                icon = getFileIcon(name, 'document');
+                //emoji = getFileEmoji(name, 'document');
                 const docViewerUrl = `/doc_viewer?path=${encodeURIComponent(path)}`;
                 return `
                     <li>
-                        <a href="${docViewerUrl}" 
-                           id="${fileId}"
-                           class="file-item ${colorClass}" 
-                           data-file-type="${fileType}"
-                           data-path="${path}"
-                           onclick="event.preventDefault(); toggleFileSelection(this);"
-                           ondblclick="event.stopPropagation(); window.open('${docViewerUrl}', '_blank');">
+                        <a href="${docViewerUrl}"
+                        id="${fileId}"
+                        class="file-item ${colorClass}"
+                        data-file-type="${fileType}"
+                        data-path="${path}"
+                        onclick="event.preventDefault(); toggleFileSelection(this);"
+                        ondblclick="event.stopPropagation(); window.open('${docViewerUrl}', '_blank');">
                             ${icon}
                             ${name}
                         </a>
                     </li>
                 `;
+                //emoji = getFileEmoji(name, 'document');
             } else {
                 return `
                     <li>

@@ -2,10 +2,13 @@ package main
 
 import (
         "flag"
+        "fmt"
+        "html/template"
+        "io/ioutil"
         "log"
         "net/url"
         "os"
-        "fmt"
+        "os/exec"
         "path/filepath"
         "strings"
 
@@ -29,6 +32,12 @@ func copyDir(src, dst string) error {
 
 func moveDir(src, dst string) error {
     return os.Rename(src, dst)
+}
+
+type DocumentData struct {
+    Title        string
+    DocumentName string
+    Content      template.HTML
 }
 
 func handleManage(c *fiber.Ctx) error {
@@ -144,12 +153,120 @@ type FileItem struct {
         Path string `json:"path"`
 }
 
-var rootPath string
+func handleDocument(c *fiber.Ctx) error {
+    // Check if office docs are enabled
+    if libreOfficeAppPath == "" {
+        return c.Status(503).SendString("Office document viewing is not enabled.")
+    }
+    
+    // Get document path from query parameter and decode it
+    encodedDocPath := c.Query("path")
+    if encodedDocPath == "" {
+        return c.Status(400).SendString("Document path is required")
+    }
+    
+    // Decode the URL-encoded path
+    decodedDocPath, err := url.QueryUnescape(encodedDocPath)
+    if err != nil {
+        return c.Status(400).SendString("Invalid document path encoding")
+    }
+    
+    // Concatenate with root path to get full file path
+    fullDocPath := filepath.Join(rootPath, decodedDocPath)
+    
+    // Check if file exists
+    if _, err := os.Stat(fullDocPath); os.IsNotExist(err) {
+        return c.Status(404).SendString("File not found: " + decodedDocPath)
+    }
+    
+    // Parse the template from file
+    tmpl, err := template.ParseFiles("doc_viewer_template.html")
+    if err != nil {
+        return c.Status(500).SendString("Template error: " + err.Error())
+    }
+    
+    // Convert document to HTML using LibreOffice
+    htmlContent, err := convertDocumentToHTML(fullDocPath)
+    if err != nil {
+        return c.Status(500).SendString("Document conversion failed: " + err.Error())
+    }
+    
+    // Prepare template data
+    data := DocumentData{
+        Title:        decodedDocPath,
+        DocumentName: decodedDocPath,
+        Content:      template.HTML(htmlContent),
+    }
+    
+    // Execute the template
+    c.Set("Content-Type", "text/html")
+    return tmpl.Execute(c.Response().BodyWriter(), data)
+}
+
+
+func convertDocumentToHTML(docPath string) (string, error) {
+    // Create temporary directory for output
+    tempDir, err := ioutil.TempDir("", "libreoffice_convert_")
+    if err != nil {
+        return "", fmt.Errorf("failed to create temp directory: %v", err)
+    }
+    defer os.RemoveAll(tempDir) // Clean up temp directory
+    
+    // Prepare LibreOffice command
+    cmd := exec.Command(
+        libreOfficeAppPath,
+        "--headless",
+        "--convert-to", "html:XHTML Writer File:BodyOnly,EmbedImages",
+        "--outdir", tempDir,
+        docPath,
+    )
+    
+    // Execute the conversion
+    output, err := cmd.CombinedOutput()
+    if err != nil {
+        return "", fmt.Errorf("LibreOffice conversion failed: %v, output: %s", err, string(output))
+    }
+    
+    // Determine the output HTML filename
+    baseName := filepath.Base(docPath)
+    nameWithoutExt := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+    htmlFileName := nameWithoutExt + ".html"
+    htmlFilePath := filepath.Join(tempDir, htmlFileName)
+    
+    // Read the generated HTML file
+    htmlContent, err := ioutil.ReadFile(htmlFilePath)
+    if err != nil {
+        return "", fmt.Errorf("failed to read converted HTML file: %v", err)
+    }
+    
+    return string(htmlContent), nil
+}
+
+var (
+    rootPath           string
+    libreOfficeAppPath string
+)
 
 func main() {
         // Parse command line arguments
         flag.StringVar(&rootPath, "path", ".", "Root path to serve files from")
+        flag.StringVar(&libreOfficeAppPath, "libreoffice", "", "Path to LibreOffice AppImage executable (optional - enables office document viewing)")
         flag.Parse()
+        
+        // Validate LibreOffice path if provided
+        if libreOfficeAppPath != "" {
+                if _, err := os.Stat(libreOfficeAppPath); os.IsNotExist(err) {
+                log.Printf("LibreOffice AppImage not found at: %s - resetting to disabled", libreOfficeAppPath)
+                libreOfficeAppPath = ""
+                }
+        }
+        
+        // Print final LibreOffice path status
+        if libreOfficeAppPath != "" {
+                log.Printf("LibreOffice path: %s", libreOfficeAppPath)
+        } else {
+                log.Printf("LibreOffice path: (not set - office document viewing disabled)")
+        }
 
         // Convert to absolute path
         absPath, err := filepath.Abs(rootPath)
@@ -173,6 +290,9 @@ func main() {
 
         // Serve static files from ./static directory
         app.Static("/static", "./static")
+
+        // Your existing server setup code here...
+        app.Get("/doc_viewer", handleDocument)
 
         // Serve the main HTML file at root
         app.Get("/", func(c *fiber.Ctx) error {
