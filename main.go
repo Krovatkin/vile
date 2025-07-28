@@ -260,13 +260,27 @@ func convertDocumentToHTML(docPath string) (string, error) {
 var (
 	rootPath           string
 	libreOfficeAppPath string
+	// Version information - these will be set at build time
+	version   = "0.1.0-alpha" // Default version
+	buildDate = "unknown"     // Will be set during build
+	gitCommit = "unknown"     // Will be set during build
 )
 
 func main() {
 	// Parse command line arguments
+	var showVersion bool
+	flag.BoolVar(&showVersion, "version", false, "Show version information and exit")
 	flag.StringVar(&rootPath, "path", ".", "Root path to serve files from")
 	flag.StringVar(&libreOfficeAppPath, "libreoffice", "", "Path to LibreOffice AppImage executable (optional - enables office document viewing)")
 	flag.Parse()
+
+	// Handle version flag
+	if showVersion {
+		fmt.Printf("doc-viewer version %s\n", version)
+		fmt.Printf("Build date: %s\n", buildDate)
+		fmt.Printf("Git commit: %s\n", gitCommit)
+		return
+	}
 
 	// Validate LibreOffice path if provided
 	if libreOfficeAppPath != "" {
