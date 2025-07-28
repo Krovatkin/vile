@@ -474,6 +474,54 @@
                 // loop: true,
                 // autoplayVideos: false
             });
+
+            lightbox.on('open', function() {
+                const nextBtn = document.querySelector('.gnext');
+                const prevBtn = document.querySelector('.gprev');
+                
+                if (nextBtn) {
+                    nextBtn.onclick = function(e) {
+                        e.preventDefault();
+                        
+                        // Find next image element in DOM
+                        const currentHref = lightbox.elements[0].href;
+                        const nextElement = findImageElement(currentHref, 1); // +1 for next
+                        
+                        if (nextElement) {
+                            lightbox.setElements([
+                                {
+                                    href: nextElement.href,
+                                    title: nextElement.getAttribute('data-title'),
+                                    description: nextElement.getAttribute('data-description')
+                                }
+                            ]);
+                            lightbox.goToSlide(0); // Go to the only image (index 0)
+                        }
+                    };
+                }
+                
+                if (prevBtn) {
+                    prevBtn.onclick = function(e) {
+                        e.preventDefault();
+                        
+                        // Find previous image element in DOM
+                        const currentHref = lightbox.elements[0].href;
+                        const prevElement = findImageElement(currentHref, -1); // -1 for previous
+                        
+                        if (prevElement) {
+                            lightbox.setElements([
+                                {
+                                    href: prevElement.href,
+                                    title: prevElement.getAttribute('data-title'),
+                                    description: prevElement.getAttribute('data-description')
+                                }
+                            ]);
+                            lightbox.goToSlide(0); // Go to the only image (index 0)
+                        }
+                    };
+                }
+            });       
+
         }
 
         function openLightbox(element) {
@@ -486,6 +534,32 @@
             ]);
             lightbox.open();
         }
+
+        function findImageElement(currentHref, direction) {
+            // Get all image links in DOM
+            const imageLinks = document.querySelectorAll('a[href^="/image?path="]');
+            const imageArray = Array.from(imageLinks);
+            
+            // Find current element index
+            const currentIndex = imageArray.findIndex(el => el.href === currentHref);
+            
+            if (currentIndex !== -1) {
+                let newIndex;
+                
+                if (direction === 1) {
+                    // Next: wrap to first if at end
+                    newIndex = (currentIndex + 1) % imageArray.length;
+                } else if (direction === -1) {
+                    // Previous: wrap to last if at beginning
+                    newIndex = currentIndex === 0 ? imageArray.length - 1 : currentIndex - 1;
+                }
+                
+                return imageArray[newIndex];
+            }
+            
+            return null;
+        }
+
 
         // Templates
         const folderTemplate = (name, path) => `
