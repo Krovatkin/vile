@@ -14,7 +14,7 @@
         <!-- Tab Bar -->
         <div class="flex items-center gap-2 mb-4">
             <div id="tabsContainer" class="flex gap-1 flex-wrap"></div>
-            <button id="addTabBtn" class="btn btn-sm btn-circle btn-primary">+</button>
+            <button id="addTabBtn" class="btn btn-sm rounded-md bg-blue-400 hover:bg-blue-500 text-white border-blue-400">+</button>
         </div>
 
         <!-- File Operations Bar -->
@@ -582,28 +582,31 @@
             const isDocument = type === 'document' || isDocumentFile(name);
             const isSelected = selected.has(path);
             
-            let colorClass, fileType, icon, emoji;
+            let colorClass, fileType, icon
+            // let emoji;
             
             if (isImage) {
                 fileType = 'image';
                 colorClass = isSelected ? '!bg-blue-200 !text-white' : 'text-green-600 hover:bg-green-50';
                 icon = getFileIcon(name, 'image');
-                emoji = getFileEmoji(name, 'image');
+                //emoji = getFileEmoji(name, 'image');
             } else if (isDocument) {
                 fileType = 'document';
                 colorClass = isSelected ? '!bg-blue-200 !text-white' : 'text-purple-600 hover:bg-purple-50';
                 icon = getFileIcon(name, 'document');
-                emoji = getFileEmoji(name, 'document');
+                //emoji = getFileEmoji(name, 'document');
             } else {
                 fileType = 'file';
                 colorClass = isSelected ? '!bg-blue-200 !text-white' : 'text-blue-600 hover:bg-blue-50';
                 icon = getFileIcon(name, 'file');
-                emoji = getFileEmoji(name, 'file');
+                //emoji = getFileEmoji(name, 'file');
             }
 
             const fileId = `file-${path.replace(/[^a-zA-Z0-9]/g, '-')}`;
 
+            // ${name} ${emoji}
             if (isImage) {
+                
                 const imageUrl = `/image?path=${encodeURIComponent(path)}`;
                 return `
                     <li>
@@ -617,7 +620,7 @@
                            onclick="event.preventDefault(); toggleFileSelection(this);"
                            ondblclick="event.stopPropagation(); openLightbox(this);">
                             ${icon}
-                            ${name} ${emoji}
+                            ${name}
                         </a>
                     </li>
                 `;
@@ -633,7 +636,7 @@
                            onclick="event.preventDefault(); toggleFileSelection(this);"
                            ondblclick="event.stopPropagation(); window.open('${docViewerUrl}', '_blank');">
                             ${icon}
-                            ${name} ${emoji}
+                            ${name}
                         </a>
                     </li>
                 `;
@@ -647,7 +650,7 @@
                            data-path="${path}"
                            onclick="toggleFileSelection(this);">
                             ${icon}
-                            ${name} ${emoji}
+                            ${name}
                         </a>
                     </li>
                 `;
