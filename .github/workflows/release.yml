@@ -49,7 +49,7 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
       run: |
         # Determine binary name and extension
-        BINARY_NAME="doc-viewer"
+        BINARY_NAME="vile"
         if [ "$GOOS" = "windows" ]; then
           BINARY_NAME="${BINARY_NAME}.exe"
         fi
