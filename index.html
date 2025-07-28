@@ -468,11 +468,23 @@
                 lightbox.destroy();
             }
             lightbox = GLightbox({
-                selector: '.glightbox',
-                touchNavigation: true,
-                loop: true,
-                autoplayVideos: false
+                selector: 'none',
+                // openEffect: 'none',
+                // touchNavigation: true,
+                // loop: true,
+                // autoplayVideos: false
             });
+        }
+
+        function openLightbox(element) {
+            lightbox.setElements([
+                {
+                    href: element.href,
+                    title: element.getAttribute('data-title'),
+                    description: element.getAttribute('data-description')
+                }
+            ]);
+            lightbox.open();
         }
 
         // Templates
@@ -518,7 +530,7 @@
             const fileId = `file-${path.replace(/[^a-zA-Z0-9]/g, '-')}`;
 
             if (isImage) {
-                const imageUrl = `/image/${path}`;
+                const imageUrl = `/image?path=${encodeURIComponent(path)}`;
                 return `
                     <li>
                         <a href="${imageUrl}" 
@@ -529,7 +541,7 @@
                            data-file-type="${fileType}"
                            data-path="${path}"
                            onclick="event.preventDefault(); toggleFileSelection(this);"
-                           ondblclick="event.stopPropagation(); GLightbox().open();">
+                           ondblclick="event.stopPropagation(); openLightbox(this);">
                             ${icon}
                             ${name} ${emoji}
                         </a>
