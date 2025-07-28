@@ -19,6 +19,13 @@
 
         <!-- File Operations Bar -->
         <div class="flex items-center gap-2 mb-4 p-2 bg-white rounded-lg shadow-sm">
+            <button id="backButton" class="btn btn-sm btn-ghost hidden" onclick="navigateBack()">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+                Back
+            </button>
+            <div id="backDivider" class="divider divider-horizontal hidden"></div>
             <button id="copyBtn" class="btn btn-sm btn-ghost disabled:opacity-50" disabled onclick="copyFiles()">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
@@ -41,20 +48,13 @@
             <span id="selectionCount" class="text-sm text-gray-500">No items selected</span>
         </div>
 
-        <!-- Original Content (unchanged) -->
+        <!-- Original Content (back button removed) -->
         <div class="collapse collapse-arrow bg-blue-100">
             <input type="checkbox" checked />
             <div class="collapse-title text-xl font-medium">
                 📁 <span id="currentPath">/</span>
             </div>
             <div class="collapse-content">
-                <!-- Back button -->
-                <div id="backButton" class="mb-2 hidden">
-                    <button onclick="navigateBack()" class="btn btn-sm btn-outline">
-                        ← Back
-                    </button>
-                </div>
-
                 <ul class="menu bg-base-100 rounded-box p-2" id="fileList">
                     <!-- Content will be populated by WebSocket -->
                 </ul>
@@ -707,6 +707,7 @@
         const spinnerElement = document.getElementById('loadingSpinner');
         const currentPathElement = document.getElementById('currentPath');
         const backButtonElement = document.getElementById('backButton');
+        const backDividerElement = document.getElementById('backDivider');
 
         // Show/hide spinner
         function showSpinner() {
@@ -723,8 +724,10 @@
         function updateBackButton() {
             if (currentPath === '') {
                 backButtonElement.classList.add('hidden');
+                backDividerElement.classList.add('hidden');
             } else {
                 backButtonElement.classList.remove('hidden');
+                backDividerElement.classList.remove('hidden');
             }
         }
 
@@ -859,6 +862,7 @@
             // Initialize button states
             updateButtonStates();
 
+            // Get initial path from URL parameter
             currentPath = getPathFromURL();
 
             // Create first tab (will use path from URL or default to root)
@@ -867,3 +871,5 @@
     </script>
 </body>
 </html>
+
+
