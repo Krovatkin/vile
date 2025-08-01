@@ -40,7 +40,19 @@ type DocumentData struct {
 	Content      template.HTML
 }
 
+type IndexData struct {
+    WriteMode bool  // Changed to WriteMode
+}
+
 func handleManage(c *fiber.Ctx) error {
+    // Add this check at the beginning
+    if !writeMode {
+        return c.Status(403).JSON(fiber.Map{
+            "status": "error",
+            "error":  "File operations are disabled. Use --write flag to enable write mode",
+        })
+    }
+
 	// Get parameters
 	sources := c.Query("srcs")
 	action := c.Query("action")
@@ -113,26 +125,26 @@ func handleManage(c *fiber.Ctx) error {
 			// Handle directory
 			if action == "copy" {
 				log.Printf("Would COPY DIR: %s -> %s", srcPath, targetPath)
-				// err = copyDir(srcPath, targetPath)
+				err = copyDir(srcPath, targetPath)
 			} else { // paste (move)
 				log.Printf("Would MOVE DIR: %s -> %s", srcPath, targetPath)
-				// err = moveDir(srcPath, targetPath)
+				err = moveDir(srcPath, targetPath)
 			}
 		} else {
 			// Handle file
 			if action == "copy" {
 				log.Printf("Would COPY FILE: %s -> %s", srcPath, targetPath)
-				// err = copyFile(srcPath, targetPath)
+				err = copyFile(srcPath, targetPath)
 			} else { // paste (move)
 				log.Printf("Would MOVE FILE: %s -> %s", srcPath, targetPath)
-				// err = moveFile(srcPath, targetPath)
+				err = moveFile(srcPath, targetPath)
 			}
 		}
 
 		// Comment out error handling since we're not actually doing operations
-		// if err != nil {
-		//     errors = append(errors, fmt.Sprintf("Failed to %s %s to %s: %v", action, src, dest, err))
-		// }
+		if err != nil {
+		    errors = append(errors, fmt.Sprintf("Failed to %s %s to %s: %v", action, src, dest, err))
+		}
 	}
 
 	// Return response
@@ -181,7 +193,7 @@ func handleDocument(c *fiber.Ctx) error {
 	}
 
 	// Parse the template from file
-	tmpl, err := template.ParseFiles("doc_viewer_template.html")
+	tmpl, err := template.ParseFiles("doc_viewer.html.tmpl")
 	if err != nil {
 		return c.Status(500).SendString("Template error: " + err.Error())
 	}
@@ -260,6 +272,7 @@ func convertDocumentToHTML(docPath string) (string, error) {
 var (
 	rootPath           string
 	libreOfficeAppPath string
+	writeMode          bool
 	// Version information - these will be set at build time
 	version   = "0.1.0-alpha" // Default version
 	buildDate = "unknown"     // Will be set during build
@@ -272,6 +285,7 @@ func main() {
 	flag.BoolVar(&showVersion, "version", false, "Show version information and exit")
 	flag.StringVar(&rootPath, "path", ".", "Root path to serve files from")
 	flag.StringVar(&libreOfficeAppPath, "libreoffice", "", "Path to LibreOffice AppImage executable (optional - enables office document viewing)")
+	flag.BoolVar(&writeMode, "write", false, "Enable write mode (allows file operations)")
 	flag.Parse()
 
 	// Handle version flag
@@ -325,7 +339,17 @@ func main() {
 
 	// Serve the main HTML file at root
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendFile("./index.html")
+		tmpl, err := template.ParseFiles("./index.html.tmpl")
+		if err != nil {
+			return c.Status(500).SendString("Template error: " + err.Error())
+		}
+		
+		data := IndexData{
+			WriteMode: writeMode,  // Pass writeMode
+		}
+		
+		c.Set("Content-Type", "text/html")
+		return tmpl.Execute(c.Response().BodyWriter(), data)
 	})
 
 	// Serve the document viewer HTML file

@@ -853,9 +853,26 @@
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
+            const writeMode = {{.WriteMode}};  // Changed to writeMode
+            
             // Initialize lightbox
             reinitializeLightbox();
 
+            // Add event listener for new tab button
+            document.getElementById('addTabBtn').addEventListener('click', addNewTab);
+
+            // Initialize button states
+            updateButtonStates();
+
+            // Disable buttons if NOT in write mode (read-only by default)
+            if (!writeMode) {
+                ['copyBtn', 'cutBtn', 'pasteBtn'].forEach(id => {
+                    const btn = document.getElementById(id);
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    btn.title = 'Read-only mode - use --write flag to enable file operations';
+                });
+            }
             // Add event listener for new tab button
             document.getElementById('addTabBtn').addEventListener('click', addNewTab);
 
