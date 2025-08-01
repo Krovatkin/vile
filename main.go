@@ -6,16 +6,27 @@ import (
 	"html/template"
 	"io/ioutil"
 	"log"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/websocket/v2"
 	"github.com/otiai10/copy"
+	"github.com/tus/tusd/pkg/filestore"
+	"github.com/tus/tusd/pkg/handler"
+
+	// "github.com/tus/tusd/pkg/filestore"
+	// "github.com/tus/tusd/pkg/handler"
+
+	// "github.com/tus/tusd/v2/pkg/filestore"
+	// "github.com/tus/tusd/v2/pkg/handler"
+
+	"net/http"
+	"net/url"
 )
 
 func copyFile(src, dst string) error {
@@ -41,17 +52,17 @@ type DocumentData struct {
 }
 
 type IndexData struct {
-    WriteMode bool  // Changed to WriteMode
+	WriteMode bool // Changed to WriteMode
 }
 
 func handleManage(c *fiber.Ctx) error {
-    // Add this check at the beginning
-    if !writeMode {
-        return c.Status(403).JSON(fiber.Map{
-            "status": "error",
-            "error":  "File operations are disabled. Use --write flag to enable write mode",
-        })
-    }
+	// Add this check at the beginning
+	if !writeMode {
+		return c.Status(403).JSON(fiber.Map{
+			"status": "error",
+			"error":  "File operations are disabled. Use --write flag to enable write mode",
+		})
+	}
 
 	// Get parameters
 	sources := c.Query("srcs")
@@ -143,7 +154,7 @@ func handleManage(c *fiber.Ctx) error {
 
 		// Comment out error handling since we're not actually doing operations
 		if err != nil {
-		    errors = append(errors, fmt.Sprintf("Failed to %s %s to %s: %v", action, src, dest, err))
+			errors = append(errors, fmt.Sprintf("Failed to %s %s to %s: %v", action, src, dest, err))
 		}
 	}
 
@@ -279,6 +290,183 @@ var (
 	gitCommit = "unknown"     // Will be set during build
 )
 
+// func setupTusUpload(app *fiber.App) {
+// 	if !writeMode {
+// 		return
+// 	}
+
+// 	// Create file store
+// 	store := filestore.New("./temp_uploads")
+
+// 	// Create composer
+// 	composer := handler.NewStoreComposer()
+// 	store.UseIn(composer)
+
+// 	// Create handler
+// 	tusHandler, err := handler.NewHandler(handler.Config{
+// 		BasePath:                "/upload/tus/",
+// 		StoreComposer:           composer,
+// 		NotifyCompleteUploads:   true,
+// 		RespectForwardedHeaders: true,
+// 	})
+// 	if err != nil {
+// 		log.Printf("Unable to create TUS handler: %s", err)
+// 		return
+// 	}
+
+// 	// Handle completed uploads
+// 	go func() {
+// 		for event := range tusHandler.CompleteUploads {
+// 			// Fix: Use the store directly instead of tusHandler.DataStore
+// 			info := event.Upload
+// 			targetPath := info.MetaData["relativePath"]
+// 			filename := info.MetaData["filename"]
+
+// 			tempFile := filepath.Join("./temp_uploads", event.Upload.ID)
+// 			finalPath := filepath.Join(rootPath, targetPath, filename)
+
+// 			os.MkdirAll(filepath.Dir(finalPath), 0755)
+// 			os.Rename(tempFile, finalPath)
+// 		}
+// 	}()
+
+// 	// Mount handler - simplified version
+// 	app.All("/upload/tus/*", func(c *fiber.Ctx) error {
+// 		// Convert fasthttp request to net/http request
+// 		// req := &http.Request{
+// 		// 	Method: c.Method(),
+// 		// 	URL:    &url.URL{Path: string(c.Request().URI().Path())},
+// 		// 	Header: make(http.Header),
+// 		// 	Body:   io.NopCloser(c.Request().BodyStream()), // Fix: wrap with NopCloser
+// 		// }
+
+// 		req, err := adaptor.ConvertRequest(c, true) // or false, depending on your use-case
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		// Copy headers
+// 		c.Request().Header.VisitAll(func(key, value []byte) {
+// 			req.Header.Set(string(key), string(value))
+// 		})
+
+// 		w := &httpResponseWriter{ctx: c}
+// 		tusHandler.ServeHTTP(w, req)
+// 		return nil
+// 	})
+// }
+
+// func setupResumableUpload(app *fiber.App) {
+// 	if !writeMode {
+// 		return
+// 	}
+
+// 	// Create resumable uploader
+// 	resumable := go_resumable.NewResumable("./temp_uploads")
+
+// 	// Handle upload chunks
+// 	app.Post("/upload/resumable", func(c *fiber.Ctx) error {
+// 		// Convert fiber request to standard http request
+// 		req, err := adaptor.ConvertRequest(c, true)
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		w := &httpResponseWriter{ctx: c}
+
+// 		// Handle the chunk
+// 		resumable.Handle(w, req)
+// 		return nil
+// 	})
+
+// 	// Handle upload completion
+// 	resumable.OnComplete(func(filename string, tempPath string) {
+// 		// Get target path from query params (you'll need to store this)
+// 		targetPath := "" // You might need to store this in metadata
+// 		finalPath := filepath.Join(rootPath, targetPath, filename)
+
+// 		os.MkdirAll(filepath.Dir(finalPath), 0755)
+// 		os.Rename(tempPath, finalPath)
+
+// 		log.Printf("Upload completed: %s", finalPath)
+// 	})
+// }
+
+func setupTusUpload(app *fiber.App) {
+	if !writeMode {
+		return
+	}
+
+	// Create file store
+	store := filestore.New("./uploads")
+
+	// Create composer
+	composer := handler.NewStoreComposer()
+	store.UseIn(composer)
+
+	// Create config
+	config := handler.Config{
+		StoreComposer:         composer,
+		NotifyCompleteUploads: true,
+		BasePath:              "/upload/tus/",
+	}
+
+	// Create handler
+	tusHandler, err := handler.NewHandler(config)
+	if err != nil {
+		log.Printf("Unable to create TUS handler: %s", err)
+		return
+	}
+
+	// Handle completed uploads
+	go func() {
+		for event := range tusHandler.CompleteUploads {
+			info := event.Upload
+			targetPath := info.MetaData["relativePath"]
+			filename := info.MetaData["filename"]
+
+			tempFile := filepath.Join("./uploads", event.Upload.ID)
+			finalPath := filepath.Join(rootPath, targetPath, filename)
+			log.Printf("Final path: %s", finalPath)
+			os.MkdirAll(filepath.Dir(finalPath), 0755)
+			//os.Rename(tempFile, finalPath)
+			copyFile(tempFile, finalPath)
+			log.Printf("Successfully moved %s to %s", tempFile, finalPath)
+		}
+	}()
+
+	// Mount using the bridge pattern - no manual conversion needed!
+	prefix := "/upload/tus/"
+	group := app.Group(prefix, adaptor.HTTPMiddleware(tusHandler.Middleware))
+
+	group.Post("", adaptor.HTTPHandlerFunc(tusHandler.PostFile))
+	group.Head(":id", adaptor.HTTPHandlerFunc(tusHandler.HeadFile))
+	group.Patch(":id", adaptor.HTTPHandlerFunc(tusHandler.PatchFile))
+	group.Get(":id", adaptor.HTTPHandlerFunc(tusHandler.GetFile))
+	group.Delete(":id", adaptor.HTTPHandlerFunc(tusHandler.DelFile))
+}
+
+// HTTP response writer adapter
+type httpResponseWriter struct {
+	ctx *fiber.Ctx
+}
+
+func (w *httpResponseWriter) Header() http.Header {
+	headers := make(http.Header)
+	w.ctx.Response().Header.VisitAll(func(key, value []byte) {
+		headers.Set(string(key), string(value))
+	})
+	return headers
+}
+
+func (w *httpResponseWriter) Write(data []byte) (int, error) {
+	return w.ctx.Response().BodyWriter().Write(data)
+}
+
+func (w *httpResponseWriter) WriteHeader(statusCode int) {
+	w.ctx.Status(statusCode)
+}
+
 func main() {
 	// Parse command line arguments
 	var showVersion bool
@@ -343,11 +531,11 @@ func main() {
 		if err != nil {
 			return c.Status(500).SendString("Template error: " + err.Error())
 		}
-		
+
 		data := IndexData{
-			WriteMode: writeMode,  // Pass writeMode
+			WriteMode: writeMode, // Pass writeMode
 		}
-		
+
 		c.Set("Content-Type", "text/html")
 		return tmpl.Execute(c.Response().BodyWriter(), data)
 	})
@@ -375,6 +563,7 @@ func main() {
 		return fiber.ErrUpgradeRequired
 	})
 
+	setupTusUpload(app)
 	// WebSocket handler
 	app.Get("/files", websocket.New(handleWebSocket))
 
