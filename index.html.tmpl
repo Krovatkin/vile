@@ -703,6 +703,7 @@
         let hasFolders = false;
         let hasFiles = false;
         let dividerAdded = false;
+        const rootPath = "{{.RootPath}}";
 
         // DOM elements
         const fileListElement = document.getElementById('fileList');
@@ -803,7 +804,7 @@
 
             currentPath = path;
             // Display path with leading slash for UI
-            const displayPath = path === '' ? '/' : '/' + path;
+            const displayPath = rootPath + (path === '' ? '' : '/' + path);
             currentPathElement.textContent = displayPath;
             updateBackButton();
 

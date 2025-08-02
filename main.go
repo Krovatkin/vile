@@ -40,6 +40,7 @@ type DocumentData struct {
 
 type IndexData struct {
 	WriteMode bool // Changed to WriteMode
+	RootPath  string
 }
 
 func handleManage(c *fiber.Ctx) error {
@@ -398,6 +399,7 @@ func main() {
 
 		data := IndexData{
 			WriteMode: writeMode, // Pass writeMode
+			RootPath:  rootPath,
 		}
 
 		c.Set("Content-Type", "text/html")
