@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"net/url"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -18,31 +20,16 @@ import (
 	"github.com/otiai10/copy"
 	"github.com/tus/tusd/pkg/filestore"
 	"github.com/tus/tusd/pkg/handler"
-
-	// "github.com/tus/tusd/pkg/filestore"
-	// "github.com/tus/tusd/pkg/handler"
-
-	// "github.com/tus/tusd/v2/pkg/filestore"
-	// "github.com/tus/tusd/v2/pkg/handler"
-
-	"net/http"
-	"net/url"
 )
 
-func copyFile(src, dst string) error {
-	return copy.Copy(src, dst)
-}
+func move(src, dst string) error {
+	// Copy file OR directory to destination
+	if err := copy.Copy(src, dst); err != nil {
+		return err
+	}
 
-func moveFile(src, dst string) error {
-	return os.Rename(src, dst)
-}
-
-func copyDir(src, dst string) error {
-	return copy.Copy(src, dst)
-}
-
-func moveDir(src, dst string) error {
-	return os.Rename(src, dst)
+	// Remove source file OR directory after successful copy
+	return os.RemoveAll(src)
 }
 
 type DocumentData struct {
@@ -136,19 +123,19 @@ func handleManage(c *fiber.Ctx) error {
 			// Handle directory
 			if action == "copy" {
 				log.Printf("Would COPY DIR: %s -> %s", srcPath, targetPath)
-				err = copyDir(srcPath, targetPath)
+				err = copy.Copy(srcPath, targetPath)
 			} else { // paste (move)
 				log.Printf("Would MOVE DIR: %s -> %s", srcPath, targetPath)
-				err = moveDir(srcPath, targetPath)
+				err = move(srcPath, targetPath)
 			}
 		} else {
 			// Handle file
 			if action == "copy" {
 				log.Printf("Would COPY FILE: %s -> %s", srcPath, targetPath)
-				err = copyFile(srcPath, targetPath)
+				err = copy.Copy(srcPath, targetPath)
 			} else { // paste (move)
 				log.Printf("Would MOVE FILE: %s -> %s", srcPath, targetPath)
-				err = moveFile(srcPath, targetPath)
+				err = move(srcPath, targetPath)
 			}
 		}
 
@@ -290,108 +277,6 @@ var (
 	gitCommit = "unknown"     // Will be set during build
 )
 
-// func setupTusUpload(app *fiber.App) {
-// 	if !writeMode {
-// 		return
-// 	}
-
-// 	// Create file store
-// 	store := filestore.New("./temp_uploads")
-
-// 	// Create composer
-// 	composer := handler.NewStoreComposer()
-// 	store.UseIn(composer)
-
-// 	// Create handler
-// 	tusHandler, err := handler.NewHandler(handler.Config{
-// 		BasePath:                "/upload/tus/",
-// 		StoreComposer:           composer,
-// 		NotifyCompleteUploads:   true,
-// 		RespectForwardedHeaders: true,
-// 	})
-// 	if err != nil {
-// 		log.Printf("Unable to create TUS handler: %s", err)
-// 		return
-// 	}
-
-// 	// Handle completed uploads
-// 	go func() {
-// 		for event := range tusHandler.CompleteUploads {
-// 			// Fix: Use the store directly instead of tusHandler.DataStore
-// 			info := event.Upload
-// 			targetPath := info.MetaData["relativePath"]
-// 			filename := info.MetaData["filename"]
-
-// 			tempFile := filepath.Join("./temp_uploads", event.Upload.ID)
-// 			finalPath := filepath.Join(rootPath, targetPath, filename)
-
-// 			os.MkdirAll(filepath.Dir(finalPath), 0755)
-// 			os.Rename(tempFile, finalPath)
-// 		}
-// 	}()
-
-// 	// Mount handler - simplified version
-// 	app.All("/upload/tus/*", func(c *fiber.Ctx) error {
-// 		// Convert fasthttp request to net/http request
-// 		// req := &http.Request{
-// 		// 	Method: c.Method(),
-// 		// 	URL:    &url.URL{Path: string(c.Request().URI().Path())},
-// 		// 	Header: make(http.Header),
-// 		// 	Body:   io.NopCloser(c.Request().BodyStream()), // Fix: wrap with NopCloser
-// 		// }
-
-// 		req, err := adaptor.ConvertRequest(c, true) // or false, depending on your use-case
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		// Copy headers
-// 		c.Request().Header.VisitAll(func(key, value []byte) {
-// 			req.Header.Set(string(key), string(value))
-// 		})
-
-// 		w := &httpResponseWriter{ctx: c}
-// 		tusHandler.ServeHTTP(w, req)
-// 		return nil
-// 	})
-// }
-
-// func setupResumableUpload(app *fiber.App) {
-// 	if !writeMode {
-// 		return
-// 	}
-
-// 	// Create resumable uploader
-// 	resumable := go_resumable.NewResumable("./temp_uploads")
-
-// 	// Handle upload chunks
-// 	app.Post("/upload/resumable", func(c *fiber.Ctx) error {
-// 		// Convert fiber request to standard http request
-// 		req, err := adaptor.ConvertRequest(c, true)
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		w := &httpResponseWriter{ctx: c}
-
-// 		// Handle the chunk
-// 		resumable.Handle(w, req)
-// 		return nil
-// 	})
-
-// 	// Handle upload completion
-// 	resumable.OnComplete(func(filename string, tempPath string) {
-// 		// Get target path from query params (you'll need to store this)
-// 		targetPath := "" // You might need to store this in metadata
-// 		finalPath := filepath.Join(rootPath, targetPath, filename)
-
-// 		os.MkdirAll(filepath.Dir(finalPath), 0755)
-// 		os.Rename(tempPath, finalPath)
-
-// 		log.Printf("Upload completed: %s", finalPath)
-// 	})
-// }
-
 func setupTusUpload(app *fiber.App) {
 	if !writeMode {
 		return
@@ -430,7 +315,7 @@ func setupTusUpload(app *fiber.App) {
 			log.Printf("Final path: %s", finalPath)
 			os.MkdirAll(filepath.Dir(finalPath), 0755)
 			//os.Rename(tempFile, finalPath)
-			copyFile(tempFile, finalPath)
+			move(tempFile, finalPath)
 			log.Printf("Successfully moved %s to %s", tempFile, finalPath)
 		}
 	}()
@@ -444,27 +329,6 @@ func setupTusUpload(app *fiber.App) {
 	group.Patch(":id", adaptor.HTTPHandlerFunc(tusHandler.PatchFile))
 	group.Get(":id", adaptor.HTTPHandlerFunc(tusHandler.GetFile))
 	group.Delete(":id", adaptor.HTTPHandlerFunc(tusHandler.DelFile))
-}
-
-// HTTP response writer adapter
-type httpResponseWriter struct {
-	ctx *fiber.Ctx
-}
-
-func (w *httpResponseWriter) Header() http.Header {
-	headers := make(http.Header)
-	w.ctx.Response().Header.VisitAll(func(key, value []byte) {
-		headers.Set(string(key), string(value))
-	})
-	return headers
-}
-
-func (w *httpResponseWriter) Write(data []byte) (int, error) {
-	return w.ctx.Response().BodyWriter().Write(data)
-}
-
-func (w *httpResponseWriter) WriteHeader(statusCode int) {
-	w.ctx.Status(statusCode)
 }
 
 func main() {
