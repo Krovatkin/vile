@@ -49,7 +49,7 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
       run: |
         # Determine binary name and extension
-        BINARY_NAME="vile"
+        BINARY_NAME="wile"
         if [ "$GOOS" = "windows" ]; then
           BINARY_NAME="${BINARY_NAME}.exe"
         fi
@@ -59,17 +59,31 @@ jobs:
           -ldflags="-s -w -X 'main.version=${{ steps.build_info.outputs.VERSION }}' -X 'main.buildDate=${{ steps.build_info.outputs.BUILD_DATE }}' -X 'main.gitCommit=${{ steps.build_info.outputs.GIT_COMMIT }}'" \
           -o ${BINARY_NAME} .
         
+        # Create release directory structure
+        RELEASE_DIR="wile-${{ steps.build_info.outputs.VERSION }}-${GOOS}-${GOARCH}"
+        mkdir -p ${RELEASE_DIR}
+        mkdir -p ${RELEASE_DIR}/uploads
+        
+        # Copy binary and required files
+        cp ${BINARY_NAME} ${RELEASE_DIR}/
+        cp index.html.tmpl ${RELEASE_DIR}/
+        cp doc_viewer.html.tmpl ${RELEASE_DIR}/
+        
+        # Create dummy file in uploads directory
+        touch ${RELEASE_DIR}/uploads/dummy
+        
         # Create archive
         if [ "$GOOS" = "windows" ]; then
-          ARCHIVE_NAME="doc-viewer-${GOOS}-${GOARCH}.zip"
-          zip ${ARCHIVE_NAME} ${BINARY_NAME}
+          ARCHIVE_NAME="${RELEASE_DIR}.zip"
+          zip -r ${ARCHIVE_NAME} ${RELEASE_DIR}
         else
-          ARCHIVE_NAME="doc-viewer-${GOOS}-${GOARCH}.tar.gz"
-          tar -czf ${ARCHIVE_NAME} ${BINARY_NAME}
+          ARCHIVE_NAME="${RELEASE_DIR}.tar.gz"
+          tar -czf ${ARCHIVE_NAME} ${RELEASE_DIR}
         fi
         
         echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
         echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+        echo "RELEASE_DIR=${RELEASE_DIR}" >> $GITHUB_ENV
     
     - name: Upload Release Asset
       uses: actions/upload-artifact@v4
@@ -119,10 +133,21 @@ jobs:
           - Auto-generated release for ${{ github.ref_name }}
           
           ## Downloads
-          Choose the appropriate binary for your operating system:
-          - **Linux**: `doc-viewer-linux-amd64.tar.gz` or `doc-viewer-linux-arm64.tar.gz`
-          - **macOS**: `doc-viewer-darwin-amd64.tar.gz` or `doc-viewer-darwin-arm64.tar.gz` 
-          - **Windows**: `doc-viewer-windows-amd64.zip`
+          Choose the appropriate archive for your operating system and extract it:
+          - **Linux**: `wile-${{ steps.build_info.outputs.VERSION }}-linux-amd64.tar.gz` or `wile-${{ steps.build_info.outputs.VERSION }}-linux-arm64.tar.gz`
+          - **macOS**: `wile-${{ steps.build_info.outputs.VERSION }}-darwin-amd64.tar.gz` or `wile-${{ steps.build_info.outputs.VERSION }}-darwin-arm64.tar.gz` 
+          - **Windows**: `wile-${{ steps.build_info.outputs.VERSION }}-windows-amd64.zip`
+          
+          Each archive contains:
+          - The `wile` binary (or `wile.exe` on Windows)
+          - `index.html.tmpl` - Main page template
+          - `doc_viewer.html.tmpl` - Document viewer template
+          - `uploads/` directory for file uploads
+          
+          ## Installation
+          1. Download the appropriate archive for your system
+          2. Extract the archive to your desired location
+          3. Run the `wile` binary from the extracted directory
           
           ## Version Information
           - Version: ${{ steps.build_info.outputs.VERSION }}
