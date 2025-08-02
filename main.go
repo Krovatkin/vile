@@ -687,11 +687,7 @@ func handleWebSocket(c *websocket.Conn) {
 	// Send items in chunks of 10
 	chunkSize := 10
 	for i := 0; i < len(allItems); i += chunkSize {
-		end := i + chunkSize
-		if end > len(allItems) {
-			end = len(allItems)
-		}
-
+		end := min(i+chunkSize, len(allItems))
 		chunk := allItems[i:end]
 
 		// Send chunk
