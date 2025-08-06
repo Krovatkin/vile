@@ -76,7 +76,7 @@ func handleManage(c *fiber.Ctx) error {
 	}
 
 	// Validate action
-	if action != "copy" && action != "paste" {
+	if action != "copy" && action != "paste" && action != "delete" {
 		return c.Status(400).JSON(fiber.Map{
 			"status": "error",
 			"error":  "Invalid action. Must be 'copy' or 'paste'",
@@ -84,22 +84,25 @@ func handleManage(c *fiber.Ctx) error {
 	}
 
 	// Build destination path
-	destPath := filepath.Join(rootPath, dest)
+	if action != "delete" {
+		// Build destination path
+		destPath := filepath.Join(rootPath, dest)
 
-	// Check if destination exists and is a directory
-	destInfo, err := os.Stat(destPath)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{
-			"status": "error",
-			"error":  "Destination path does not exist",
-		})
-	}
+		// Check if destination exists and is a directory
+		destInfo, err := os.Stat(destPath)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{
+				"status": "error",
+				"error":  "Destination path does not exist",
+			})
+		}
 
-	if !destInfo.IsDir() {
-		return c.Status(400).JSON(fiber.Map{
-			"status": "error",
-			"error":  "Destination must be a directory",
-		})
+		if !destInfo.IsDir() {
+			return c.Status(400).JSON(fiber.Map{
+				"status": "error",
+				"error":  "Destination must be a directory",
+			})
+		}
 	}
 
 	var errors []string
@@ -111,38 +114,47 @@ func handleManage(c *fiber.Ctx) error {
 		// Check if source exists
 		srcInfo, err := os.Stat(srcPath)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("Failed to %s %s to %s: source does not exist", action, src, dest))
+			errors = append(errors, fmt.Sprintf("Failed to %s %s: source does not exist", action, src))
 			continue
 		}
 
-		// Get the base name for the destination
-		baseName := filepath.Base(srcPath)
-		targetPath := filepath.Join(destPath, baseName)
-
-		// Perform the operation
-		if srcInfo.IsDir() {
-			// Handle directory
-			if action == "copy" {
-				log.Printf("Would COPY DIR: %s -> %s", srcPath, targetPath)
-				err = copy.Copy(srcPath, targetPath)
-			} else { // paste (move)
-				log.Printf("Would MOVE DIR: %s -> %s", srcPath, targetPath)
-				err = move(srcPath, targetPath)
+		if action == "delete" {
+			// Handle delete operation
+			log.Printf("Would DELETE: %s", srcPath)
+			err = os.RemoveAll(srcPath) // RemoveAll works for both files and directories
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("Failed to delete %s: %v", src, err))
 			}
 		} else {
-			// Handle file
-			if action == "copy" {
-				log.Printf("Would COPY FILE: %s -> %s", srcPath, targetPath)
-				err = copy.Copy(srcPath, targetPath)
-			} else { // paste (move)
-				log.Printf("Would MOVE FILE: %s -> %s", srcPath, targetPath)
-				err = move(srcPath, targetPath)
-			}
-		}
+			// Handle copy/paste operations (existing code)
+			destPath := filepath.Join(rootPath, dest)
+			baseName := filepath.Base(srcPath)
+			targetPath := filepath.Join(destPath, baseName)
 
-		// Comment out error handling since we're not actually doing operations
-		if err != nil {
-			errors = append(errors, fmt.Sprintf("Failed to %s %s to %s: %v", action, src, dest, err))
+			// Perform the operation
+			if srcInfo.IsDir() {
+				// Handle directory
+				if action == "copy" {
+					log.Printf("Would COPY DIR: %s -> %s", srcPath, targetPath)
+					err = copy.Copy(srcPath, targetPath)
+				} else { // paste (move)
+					log.Printf("Would MOVE DIR: %s -> %s", srcPath, targetPath)
+					err = move(srcPath, targetPath)
+				}
+			} else {
+				// Handle file
+				if action == "copy" {
+					log.Printf("Would COPY FILE: %s -> %s", srcPath, targetPath)
+					err = copy.Copy(srcPath, targetPath)
+				} else { // paste (move)
+					log.Printf("Would MOVE FILE: %s -> %s", srcPath, targetPath)
+					err = move(srcPath, targetPath)
+				}
+			}
+
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("Failed to %s %s to %s: %v", action, src, dest, err))
+			}
 		}
 	}
 

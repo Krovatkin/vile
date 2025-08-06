@@ -210,6 +210,32 @@
             showNotification(`${cutFiles.size} item${cutFiles.size > 1 ? 's' : ''} cut`, 'warning');
         }
 
+        // Helper function to create file/folder item with delete button
+        function createItemHTML(name, path, type, attributes, icon) {
+            const deleteButton = `
+                <button onclick="deleteItem('${path.replace(/'/g, "\\'")}', event)" 
+                        class="delete-btn p-1 hover:bg-red-100 rounded"
+                        title="Delete ${type}">
+                    <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </button>
+            `;
+
+            return `
+                <li ${attributes} class="cursor-pointer" title="${name}">
+                    <div class="grid grid-cols-[1fr_auto] gap-2 items-center w-full">
+                        <div class="flex items-center gap-2 min-w-0 overflow-hidden">
+                            ${icon}
+                            <span class="truncate">${name}</span>
+                        </div>
+                        ${deleteButton}
+                    </div>
+                </li>
+            `;
+        }
+
+
         // Paste files operation
         function pasteFiles() {
             if (copiedFiles.size === 0 && cutFiles.size === 0) return;
@@ -252,6 +278,35 @@
         }
 
 
+        // Delete file/folder operation
+        function deleteItem(itemPath, event) {
+            event.stopPropagation(); // Prevent selection when clicking delete
+            
+            if (!confirm(`Are you sure you want to delete "${itemPath.split('/').pop()}"?`)) {
+                return;
+            }
+
+            const params = new URLSearchParams();
+            params.append('action', 'delete');
+            params.append('srcs', itemPath);
+
+            fetch(`/manage?${params.toString()}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    showNotification('Item deleted successfully', 'success');
+                    navigateToFolder(currentPath);
+                } else {
+                    showNotification(data.error || 'Failed to delete item', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting item:', error);
+                showNotification('Failed to delete item', 'error');
+            });
+        }
+
+
         // Show notification (simple implementation)
         function showNotification(message, type = 'info') {
             // Create notification element
@@ -273,17 +328,17 @@
         }
 
         // Clear selection and update UI
-    function clearSelection() {
-        // Handle any element with selection classes and restore using defaultColorMap
-        document.querySelectorAll('.\\!bg-blue-200.\\!text-white').forEach(element => {
-            const fileType = element.dataset.fileType;
-            element.className = defaultColorMap.get(fileType);
-        });
+    // function clearSelection() {
+    //     // Handle any element with selection classes and restore using defaultColorMap
+    //     document.querySelectorAll('.\\!bg-blue-200.\\!text-white').forEach(element => {
+    //         const fileType = element.dataset.fileType;
+    //         element.className = defaultColorMap.get(fileType);
+    //     });
         
-        // Clear the selection set
-        selected.clear();
-        updateButtonStates();
-    }
+    //     // Clear the selection set
+    //     selected.clear();
+    //     updateButtonStates();
+    // }
 
         // Save current global state to active tab
         function saveCurrentStateToTab() {
@@ -412,24 +467,55 @@
         }
 
         // File selection toggle - supports multi-select
+        // function toggleFileSelection(element) {
+        //     const itemType = element.dataset.fileType;
+        //     const filePath = element.dataset.path;
+        //     const selectionClassStr = '!bg-blue-200 !text-white'
+
+
+        //     if (selected.has(filePath)) {
+        //         // Remove from selection
+        //         selected.delete(filePath);
+        //         element.className = defaultColorMap.get(itemType);
+        //     } else {
+        //         // Add to selection
+        //         selected.add(filePath);
+        //         element.className = selectionClassStr;
+        //     }
+            
+        //     console.log('Selected files:', Array.from(selected));
+        //     updateButtonStates(); // Update button states after selection change
+        // }
+
         function toggleFileSelection(element) {
             const itemType = element.dataset.fileType;
             const filePath = element.dataset.path;
-            const selectionClassStr = '!bg-blue-200 !text-white'
-
+            const parentLi = element.closest('li'); // Get the parent <li>
 
             if (selected.has(filePath)) {
                 // Remove from selection
                 selected.delete(filePath);
-                element.className = defaultColorMap.get(itemType);
+                parentLi.classList.remove('!bg-blue-200', '!text-white');
             } else {
                 // Add to selection
                 selected.add(filePath);
-                element.className = selectionClassStr;
+                parentLi.classList.add('!bg-blue-200', '!text-white');
             }
             
             console.log('Selected files:', Array.from(selected));
             updateButtonStates(); // Update button states after selection change
+        }
+
+        // Clear selection and update UI
+        function clearSelection() {
+            // Clear selection classes from all li elements
+            document.querySelectorAll('li.\\!bg-blue-200').forEach(li => {
+                li.classList.remove('!bg-blue-200', '!text-white');
+            });
+            
+            // Clear the selection set
+            selected.clear();
+            updateButtonStates();
         }
 
         // Original code with document support added
@@ -523,7 +609,7 @@
                         if (nextElement) {
                             lightbox.setElements([
                                 {
-                                    href: nextElement.href,
+                                    href: nextElement.getAttribute('href'),
                                     title: nextElement.getAttribute('data-title'),
                                     description: nextElement.getAttribute('data-description')
                                 }
@@ -560,7 +646,7 @@
         function openLightbox(element) {
             lightbox.setElements([
                 {
-                    href: element.href,
+                    href: element.getAttribute('href'),
                     title: element.getAttribute('data-title'),
                     description: element.getAttribute('data-description')
                 }
@@ -570,11 +656,12 @@
 
         function findImageElement(currentHref, direction) {
             // Get all image links in DOM
-            const imageLinks = document.querySelectorAll('a[href^="/image?path="]');
+            const imageLinks = document.querySelectorAll('li[href^="/image?path="]');
             const imageArray = Array.from(imageLinks);
             
             // Find current element index
-            const currentIndex = imageArray.findIndex(el => el.href === currentHref);
+            const currentIndex = imageArray.findIndex(el => el.getAttribute('href') === currentHref);
+
             
             if (currentIndex !== -1) {
                 let newIndex;
@@ -595,103 +682,70 @@
 
 
         // Templates
-        const folderTemplate = (name, path) => `
-            <li>
-                <a href="javascript:void(0)" 
-                    ondblclick="navigateToFolder('${path.replace(/'/g, "\\'")}')" class="text-yellow-600 hover:bg-yellow-50" 
-                    onclick="event.preventDefault(); toggleFileSelection(this);"
-                    data-file-type="folder"
-                    data-path="${path}">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
-                    </svg>
-                    ${name}
-                </a>
-            </li>
-        `;
+        const folderTemplate = (name, path) => {
+            const folderIcon = `
+                <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
+                </svg>
+            `;
+            
+            return createItemHTML(
+                name,
+                path,
+                'folder',
+                `href="javascript:void(0)" ondblclick="navigateToFolder('${path.replace(/'/g, "\\'")}')" class="text-yellow-600 hover:bg-yellow-50" onclick="event.preventDefault(); toggleFileSelection(this);" data-file-type="folder" data-path="${path}"`,
+                folderIcon
+            );
+        };
 
         const fileTemplate = (name, path, type) => {
             const isImage = type === 'image' || isImageFile(name);
             const isDocument = type === 'document' || isDocumentFile(name);
             const isSelected = selected.has(path);
             
-            let colorClass, fileType, icon
-            // let emoji;
+            let colorClass, fileType;
             
             if (isImage) {
                 fileType = 'image';
                 colorClass = isSelected ? '!bg-blue-200 !text-white' : 'text-green-600 hover:bg-green-50';
-                icon = getFileIcon(name, 'image');
-                //emoji = getFileEmoji(name, 'image');
             } else if (isDocument) {
                 fileType = 'document';
                 colorClass = isSelected ? '!bg-blue-200 !text-white' : 'text-purple-600 hover:bg-purple-50';
-                icon = getFileIcon(name, 'document');
-                //emoji = getFileEmoji(name, 'document');
             } else {
                 fileType = 'file';
                 colorClass = isSelected ? '!bg-blue-200 !text-white' : 'text-blue-600 hover:bg-blue-50';
-                icon = getFileIcon(name, 'file');
-                //emoji = getFileEmoji(name, 'file');
             }
 
             const fileId = `file-${path.replace(/[^a-zA-Z0-9]/g, '-')}`;
+            const commonAttrs = `id="${fileId}" data-file-type="${fileType}" data-path="${path}"`;
+            const baseClass = `file-item ${colorClass}`;
 
-            // ${name} ${emoji}
             if (isImage) {
-                
                 const imageUrl = `/image?path=${encodeURIComponent(path)}`;
-                return `
-                    <li>
-                        <a href="${imageUrl}" 
-                           id="${fileId}"
-                           class="glightbox file-item ${colorClass}" 
-                           data-gallery="gallery" 
-                           data-title="${name}"
-                           data-file-type="${fileType}"
-                           data-path="${path}"
-                           onclick="event.preventDefault(); toggleFileSelection(this);"
-                           ondblclick="event.stopPropagation(); openLightbox(this);">
-                            ${icon}
-                            ${name}
-                        </a>
-                    </li>
-                `;
+                return createItemHTML(
+                    name, 
+                    path, 
+                    fileType,
+                    `href="${imageUrl}" ${commonAttrs} class="glightbox ${baseClass}" data-gallery="gallery" data-title="${name}" onclick="event.preventDefault(); toggleFileSelection(this);" ondblclick="event.stopPropagation(); openLightbox(this);"`,
+                    getFileIcon(name, 'image')
+                );
             } else if (isDocument) {
-                fileType = 'document';
-                colorClass = isSelected ? '!bg-blue-200 !text-white' : 'text-purple-600 hover:bg-purple-50';
-                icon = getFileIcon(name, 'document');
-                //emoji = getFileEmoji(name, 'document');
                 const docViewerUrl = `/doc_viewer?path=${encodeURIComponent(path)}`;
-                return `
-                    <li>
-                        <a href="${docViewerUrl}"
-                        id="${fileId}"
-                        class="file-item ${colorClass}"
-                        data-file-type="${fileType}"
-                        data-path="${path}"
-                        onclick="event.preventDefault(); toggleFileSelection(this);"
-                        ondblclick="event.stopPropagation(); window.open('${docViewerUrl}', '_blank');">
-                            ${icon}
-                            ${name}
-                        </a>
-                    </li>
-                `;
-                //emoji = getFileEmoji(name, 'document');
+                return createItemHTML(
+                    name, 
+                    path, 
+                    fileType,
+                    `href="${docViewerUrl}" ${commonAttrs} class="${baseClass}" onclick="event.preventDefault(); toggleFileSelection(this);" ondblclick="event.stopPropagation(); window.open('${docViewerUrl}', '_blank');"`,
+                    getFileIcon(name, 'document')
+                );
             } else {
-                return `
-                    <li>
-                        <a href="javascript:void(0)" 
-                           id="${fileId}"
-                           class="file-item ${colorClass}"
-                           data-file-type="${fileType}"
-                           data-path="${path}"
-                           onclick="toggleFileSelection(this);">
-                            ${icon}
-                            ${name}
-                        </a>
-                    </li>
-                `;
+                return createItemHTML(
+                    name, 
+                    path, 
+                    fileType,
+                    `href="javascript:void(0)" ${commonAttrs} class="${baseClass}" onclick="toggleFileSelection(this);"`,
+                    getFileIcon(name, 'file')
+                );
             }
         };
 
