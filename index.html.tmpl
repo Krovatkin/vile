@@ -211,7 +211,22 @@
         }
 
         // Helper function to create file/folder item with delete button
-        function createItemHTML(name, path, type, attributes, icon) {
+        function createItemHTML(entryObj, attributes, icon) {
+            const { name, path, type, modified } = entryObj;
+            
+            // Format the modified date to dd/mm/yy using Intl.DateTimeFormat
+            const formatDate = (dateString) => {
+                const date = new Date(dateString);
+                const formatter = new Intl.DateTimeFormat('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: '2-digit'
+                });
+                return formatter.format(date);
+            };
+            
+            const formattedDate = formatDate(modified);
+            
             const deleteButton = `
                 <button onclick="deleteItem('${path.replace(/'/g, "\\'")}', event)" 
                         class="delete-btn p-1 hover:bg-red-100 rounded"
@@ -224,16 +239,20 @@
 
             return `
                 <li ${attributes} class="cursor-pointer" title="${name}">
-                    <div class="grid grid-cols-[1fr_auto] gap-2 items-center w-full">
+                    <div class="grid grid-cols-[1fr_auto_auto] gap-2 items-center w-full">
                         <div class="flex items-center gap-2 min-w-0 overflow-hidden">
                             ${icon}
                             <span class="truncate">${name}</span>
+                        </div>
+                        <div class="text-sm text-gray-500 whitespace-nowrap">
+                            ${formattedDate}
                         </div>
                         ${deleteButton}
                     </div>
                 </li>
             `;
         }
+
 
 
         // Paste files operation
@@ -682,23 +701,23 @@
 
 
         // Templates
-        const folderTemplate = (name, path) => {
+        const folderTemplate = (item) => {
+            const {name, path} = item;
             const folderIcon = `
                 <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
                 </svg>
             `;
             
-            return createItemHTML(
-                name,
-                path,
-                'folder',
-                `href="javascript:void(0)" ondblclick="navigateToFolder('${path.replace(/'/g, "\\'")}')" class="text-yellow-600 hover:bg-yellow-50" onclick="event.preventDefault(); toggleFileSelection(this);" data-file-type="folder" data-path="${path}"`,
+            item.type = 'folder'
+            return createItemHTML(item,
+                `href="javascript:void(0)" ondblclick="navigateToFolder('${item.path.replace(/'/g, "\\'")}')" class="text-yellow-600 hover:bg-yellow-50" onclick="event.preventDefault(); toggleFileSelection(this);" data-file-type="folder" data-path="${path}"`,
                 folderIcon
             );
         };
 
-        const fileTemplate = (name, path, type) => {
+        const fileTemplate = (item) => {
+            const {name, path, type} = item;
             const isImage = type === 'image' || isImageFile(name);
             const isDocument = type === 'document' || isDocumentFile(name);
             const isSelected = selected.has(path);
@@ -723,26 +742,20 @@
             if (isImage) {
                 const imageUrl = `/image?path=${encodeURIComponent(path)}`;
                 return createItemHTML(
-                    name, 
-                    path, 
-                    fileType,
+                    item,
                     `href="${imageUrl}" ${commonAttrs} class="glightbox ${baseClass}" data-gallery="gallery" data-title="${name}" onclick="event.preventDefault(); toggleFileSelection(this);" ondblclick="event.stopPropagation(); openLightbox(this);"`,
                     getFileIcon(name, 'image')
                 );
             } else if (isDocument) {
                 const docViewerUrl = `/doc_viewer?path=${encodeURIComponent(path)}`;
                 return createItemHTML(
-                    name, 
-                    path, 
-                    fileType,
+                    item,
                     `href="${docViewerUrl}" ${commonAttrs} class="${baseClass}" onclick="event.preventDefault(); toggleFileSelection(this);" ondblclick="event.stopPropagation(); window.open('${docViewerUrl}', '_blank');"`,
                     getFileIcon(name, 'document')
                 );
             } else {
                 return createItemHTML(
-                    name, 
-                    path, 
-                    fileType,
+                    item,
                     `href="javascript:void(0)" ${commonAttrs} class="${baseClass}" onclick="toggleFileSelection(this);"`,
                     getFileIcon(name, 'file')
                 );
@@ -832,13 +845,13 @@
                         if (!hasFolders) {
                             hasFolders = true;
                         }
-                        appendToFileList(folderTemplate(item.name, item.path));
+                        appendToFileList(folderTemplate(item));
                     } else if (item.type === 'file' || item.type === 'image' || item.type === 'document') {
                         if (!hasFiles) {
                             hasFiles = true;
                             addDividerIfNeeded();
                         }
-                        appendToFileList(fileTemplate(item.name, item.path, item.type));
+                        appendToFileList(fileTemplate(item));
                     }
                 });
 

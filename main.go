@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"net/url"
 
@@ -172,9 +173,10 @@ func handleManage(c *fiber.Ctx) error {
 }
 
 type FileItem struct {
-	Type string `json:"type"` // "folder", "file", "image", or "document"
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Type     string    `json:"type"`
+	Name     string    `json:"name"`
+	Path     string    `json:"path"`
+	Modified time.Time `json:"modified"`
 }
 
 func handleDocument(c *fiber.Ctx) error {
@@ -674,11 +676,22 @@ func handleWebSocket(c *websocket.Conn) {
 		// Normalize path separators for web
 		itemRelativePath = filepath.ToSlash(itemRelativePath)
 
+		// Get file info to access modification time, use Unix epoch as default
+		var modTime time.Time
+		entryInfo, err := entry.Info()
+		if err != nil {
+			log.Printf("Error getting info for entry %s: %v", entry.Name(), err)
+			modTime = time.Unix(0, 0) // Default to Unix epoch (January 1, 1970)
+		} else {
+			modTime = entryInfo.ModTime()
+		}
+
 		fileType := getFileType(entry)
 		item := FileItem{
-			Type: fileType,
-			Name: entry.Name(),
-			Path: itemRelativePath,
+			Type:     fileType,
+			Name:     entry.Name(),
+			Path:     itemRelativePath,
+			Modified: modTime,
 		}
 
 		switch fileType {
